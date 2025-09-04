@@ -84,7 +84,6 @@ async function initMap() {
     if (businesses.length === 0) { console.warn("No businesses loaded"); return; }
 
     businesses.forEach(addMarker);
-    populateMenu();
     updateDistances();
 }
 
@@ -141,7 +140,7 @@ function populateMenu() {
         const div = document.createElement('div');
         div.className = "biz-item";
         div.id = `menu-${biz._rowIndex}`;
-        div.innerHTML = `${biz.Name}`;
+        div.innerHTML = `${biz.Name} (${biz.distance} mi)`;
         div.addEventListener('click', () => {
             map.setCenter({ lat: parseFloat(biz.Lat), lng: parseFloat(biz.Lng) });
             map.setZoom(16);
@@ -150,28 +149,21 @@ function populateMenu() {
     });
 }
 
-// Update distances in sidebar (miles)
+// Update distances in sidebar (miles) and sort closest → farthest
 function updateDistances() {
     if (!userPosition) return;
+
     businesses.forEach(biz => {
         const bizLatLng = new google.maps.LatLng(parseFloat(biz.Lat), parseFloat(biz.Lng));
         const distanceMeters = google.maps.geometry.spherical.computeDistanceBetween(userPosition, bizLatLng);
-        const distanceMiles = (distanceMeters * 0.000621371).toFixed(2);
-        biz.distance = distanceMiles;
-
-        const menuDiv = document.getElementById(`menu-${biz._rowIndex}`);
-        if (menuDiv) menuDiv.innerHTML = `${biz.Name} (${distanceMiles} mi)`;
+        biz.distance = parseFloat((distanceMeters * 0.000621371).toFixed(2)); // miles
     });
 
-    // Sort sidebar by distance
-    const menuList = document.getElementById('bizList');
-    const items = Array.from(menuList.children);
-    items.sort((a,b) => {
-        const aIndex = parseInt(a.id.replace("menu-",""));
-        const bIndex = parseInt(b.id.replace("menu-",""));
-        return businesses[aIndex].distance - businesses[bIndex].distance;
-    });
-    items.forEach(item => menuList.appendChild(item));
+    // Sort businesses by distance
+    businesses.sort((a, b) => a.distance - b.distance);
+
+    // Update sidebar
+    populateMenu();
 }
 </script>
 
