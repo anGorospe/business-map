@@ -17,66 +17,73 @@
   <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAdMrHW4487TYOWq2Eyf0QH7Yzlwkc7d68&callback=initMap" async defer></script>
 
   <script>
-    const sheetUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQDzM3Nu-ROuwXQqfAamzS8iG2qTOEYTR8-uh2X0XeWUtlcAJ-G9bkqACZWgZTFJW3zlwKOfxeNYzoi/pub?output=csv";
+    // ======= Google Sheets API Settings =======
+    const SHEET_ID = "2PACX-1vQDzM3Nu-ROuwXQqfAamzS8iG2qTOEYTR8-uh2X0XeWUtlcAJ-G9bkqACZWgZTFJW3zlwKOfxeNYzoi"; // your sheet ID
+    const RANGE = "Sheet1!A:E"; // adjust your sheet name/range
+    const API_KEY = "AIzaSyAdMrHW4487TYOWq2Eyf0QH7Yzlwkc7d68";
 
-    function parseCSV(csvText) {
-      const lines = csvText.trim().split("\n");
-      const headers = lines[0].split(",");
-      const rows = lines.slice(1);
-      return rows
-        .filter(line => line.trim() !== "") // skip blank lines
-        .map(line => {
-          const cols = line.split(",");
-          return {
-            name: cols[0] || "Unnamed",
-            lat: parseFloat(cols[1]) || 0,
-            lng: parseFloat(cols[2]) || 0,
-            hours: cols[3] || "N/A",
-            description: cols[4] || ""
-          };
-        });
-    }
+    let map;
 
-    function initMap() {
-      const map = new google.maps.Map(document.getElementById("map"), {
+    async function initMap() {
+      // Create the map
+      map = new google.maps.Map(document.getElementById("map"), {
         zoom: 14,
-        center: { lat: 37.7749, lng: -122.4194 } // temporary center
+        center: { lat: 37.7749, lng: -122.4194 } // default center
       });
 
-      fetch(sheetUrl)
-        .then(res => res.text())
-        .then(text => {
-          const businesses = parseCSV(text);
-          if (!businesses.length) return;
+      // Fetch sheet data
+      const businesses = await fetchSheetData();
 
-          // Center map on first business
-          map.setCenter({ lat: businesses[0].lat, lng: businesses[0].lng });
+      if (!businesses.length) return;
 
-          const infoWindow = new google.maps.InfoWindow();
+      // Center map on first business
+      const first = businesses[0];
+      map.setCenter({ lat: parseFloat(first.Lat), lng: parseFloat(first.Lng) });
 
-          businesses.forEach(biz => {
-            if (biz.lat === 0 && biz.lng === 0) return; // skip invalid coords
-            const marker = new google.maps.Marker({
-              position: { lat: biz.lat, lng: biz.lng },
-              map: map,
-              title: biz.name
-            });
+      // Add markers
+      const infoWindow = new google.maps.InfoWindow();
 
-            const content = `
-              <div class="info-window">
-                <h3>${biz.name}</h3>
-                <p><strong>Hours:</strong> ${biz.hours}</p>
-                <p>${biz.description}</p>
-              </div>
-            `;
+      businesses.forEach(biz => {
+        const lat = parseFloat(biz.Lat);
+        const lng = parseFloat(biz.Lng);
+        if (!lat || !lng) return;
 
-            marker.addListener("click", () => {
-              infoWindow.setContent(content);
-              infoWindow.open(map, marker);
-            });
-          });
-        })
-        .catch(err => console.error("Error loading sheet:", err));
+        const marker = new google.maps.Marker({
+          position: { lat, lng },
+          map: map,
+          title: biz.Name
+        });
+
+        const content = `
+          <div class="info-window">
+            <h3>${biz.Name}</h3>
+            <p><strong>Hours:</strong> ${biz.Hours}</p>
+            <p>${biz.Description}</p>
+          </div>
+        `;
+
+        marker.addListener("click", () => infoWindow.setContent(content) || infoWindow.open(map, marker));
+      });
+    }
+
+    async function fetchSheetData() {
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${RANGE}?key=${API_KEY}`;
+      try {
+        const response = await fetch(url);
+        const data = await response.json();
+        const rows = data.values;
+        if (!rows || rows.length < 2) return [];
+
+        const headers = rows[0];
+        return rows.slice(1).map(row => {
+          const obj = {};
+          headers.forEach((h, i) => obj[h] = row[i] || "");
+          return obj;
+        });
+      } catch (err) {
+        console.error("Error fetching sheet:", err);
+        return [];
+      }
     }
   </script>
 </body>
