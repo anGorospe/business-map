@@ -18,8 +18,8 @@
 
   <script>
     // ======= Google Sheets API Settings =======
-    const SHEET_ID = "2PACX-1vQDzM3Nu-ROuwXQqfAamzS8iG2qTOEYTR8-uh2X0XeWUtlcAJ-G9bkqACZWgZTFJW3zlwKOfxeNYzoi"; // your sheet ID
-    const RANGE = "Sheet1!A:E"; // adjust your sheet name/range
+    const SHEET_ID = "2PACX-1vQDzM3Nu-ROuwXQqfAamzS8iG2qTOEYTR8-uh2X0XeWUtlcAJ-G9bkqACZWgZTFJW3zlwKOfxeNYzoi";
+    const RANGE = "Sheet1!A:E"; // adjust your sheet tab name/range
     const API_KEY = "AIzaSyAdMrHW4487TYOWq2Eyf0QH7Yzlwkc7d68";
 
     let map;
@@ -70,6 +70,10 @@
       const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${RANGE}?key=${API_KEY}`;
       try {
         const response = await fetch(url);
+        if (!response.ok) {
+          console.error("Error fetching sheet:", response.status, response.statusText);
+          return [];
+        }
         const data = await response.json();
         const rows = data.values;
         if (!rows || rows.length < 2) return [];
