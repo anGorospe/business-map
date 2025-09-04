@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Business Map with Sidebar & Directions</title>
+    <title>EBB Helper</title>
     <style>
         html, body { margin: 0; padding: 0; height: 100%; }
         #map { height: 100%; width: 100%; }
@@ -23,6 +23,17 @@
         .biz-item { cursor: pointer; margin-bottom: 5px; padding: 3px; border-radius: 3px; }
         .biz-item:hover { background: #eee; }
         button { cursor: pointer; margin-top: 5px; }
+
+        /* Footer */
+        #footer {
+            position: absolute;
+            bottom: 5px;
+            right: 10px;
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            color: #555;
+            z-index: 10;
+        }
     </style>
 </head>
 <body>
@@ -31,6 +42,7 @@
     <div id="bizList"></div>
 </div>
 <div id="map"></div>
+<div id="footer">Created by Angelo Gorospe</div>
 
 <script>
 const SHEET_ID = "1mQud7yhTLBBZDreCshvwUZxas3-bL45m_5O3c2SVO10";
@@ -66,7 +78,12 @@ async function initMap() {
         zoom: 13
     });
 
-    // Get user location
+    businesses = await fetchSheetData();
+    if (businesses.length === 0) { console.warn("No businesses loaded"); return; }
+
+    businesses.forEach(addMarker);
+
+    // Attempt to get user location
     if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(pos => {
             userPosition = new google.maps.LatLng(pos.coords.latitude, pos.coords.longitude);
@@ -77,14 +94,13 @@ async function initMap() {
                 icon: { path: google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: "blue", fillOpacity: 1, strokeColor: "white", strokeWeight: 2 }
             });
             updateDistances();
-        }, err => { console.warn("Geolocation error:", err); });
+        }, err => {
+            console.warn("Geolocation error:", err);
+            populateMenu(); // Fallback if location denied
+        });
+    } else {
+        populateMenu(); // Browser doesn't support geolocation
     }
-
-    businesses = await fetchSheetData();
-    if (businesses.length === 0) { console.warn("No businesses loaded"); return; }
-
-    businesses.forEach(addMarker);
-    updateDistances();
 }
 
 // Add marker and info window with Get Directions button
@@ -111,7 +127,6 @@ function addMarker(biz) {
     marker.addListener('click', () => {
         infoWindow.open(map, marker);
 
-        // Add listener to the Get Directions button after DOM ready
         google.maps.event.addListenerOnce(infoWindow, 'domready', () => {
             const btn = document.getElementById(`directions-${biz._rowIndex}`);
             if (btn) {
@@ -140,7 +155,8 @@ function populateMenu() {
         const div = document.createElement('div');
         div.className = "biz-item";
         div.id = `menu-${biz._rowIndex}`;
-        div.innerHTML = `${biz.Name} (${biz.distance} mi)`;
+        const distText = biz.distance !== undefined ? ` (${biz.distance} mi)` : "";
+        div.innerHTML = `${biz.Name}${distText}`;
         div.addEventListener('click', () => {
             map.setCenter({ lat: parseFloat(biz.Lat), lng: parseFloat(biz.Lng) });
             map.setZoom(16);
@@ -151,7 +167,10 @@ function populateMenu() {
 
 // Update distances in sidebar (miles) and sort closest → farthest
 function updateDistances() {
-    if (!userPosition) return;
+    if (!userPosition) {
+        populateMenu(); // fallback if no location
+        return;
+    }
 
     businesses.forEach(biz => {
         const bizLatLng = new google.maps.LatLng(parseFloat(biz.Lat), parseFloat(biz.Lng));
