@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Business Map with Sidebar & Distance (Miles)</title>
+    <title>Business Map with Sidebar & Directions</title>
     <style>
         html, body { margin: 0; padding: 0; height: 100%; }
         #map { height: 100%; width: 100%; }
@@ -22,6 +22,7 @@
         #menu h2 { margin-top: 0; font-size: 18px; }
         .biz-item { cursor: pointer; margin-bottom: 5px; padding: 3px; border-radius: 3px; }
         .biz-item:hover { background: #eee; }
+        button { cursor: pointer; margin-top: 5px; }
     </style>
 </head>
 <body>
@@ -75,7 +76,7 @@ async function initMap() {
                 title: "You are here",
                 icon: { path: google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: "blue", fillOpacity: 1, strokeColor: "white", strokeWeight: 2 }
             });
-            updateDistances(); // update distances once we have user position
+            updateDistances();
         }, err => { console.warn("Geolocation error:", err); });
     }
 
@@ -87,7 +88,7 @@ async function initMap() {
     updateDistances();
 }
 
-// Add marker and info window
+// Add marker and info window with Get Directions button
 function addMarker(biz) {
     const lat = parseFloat(biz.Lat);
     const lng = parseFloat(biz.Lng);
@@ -104,10 +105,32 @@ function addMarker(biz) {
         <h3>${biz.Name}</h3>
         <p>${biz.Description}</p>
         <p>${biz.Hours}</p>
+        <button id="directions-${biz._rowIndex}">Get Directions</button>
     `;
 
     const infoWindow = new google.maps.InfoWindow({ content });
-    marker.addListener('click', () => infoWindow.open(map, marker));
+    marker.addListener('click', () => {
+        infoWindow.open(map, marker);
+
+        // Add listener to the Get Directions button after DOM ready
+        google.maps.event.addListenerOnce(infoWindow, 'domready', () => {
+            const btn = document.getElementById(`directions-${biz._rowIndex}`);
+            if (btn) {
+                btn.addEventListener('click', () => {
+                    if (!userPosition) {
+                        alert("User location not available");
+                        return;
+                    }
+
+                    const start = `${userPosition.lat()},${userPosition.lng()}`;
+                    const dest = `${biz.Lat},${biz.Lng}`;
+                    const url = `https://www.google.com/maps/dir/?api=1&origin=${start}&destination=${dest}&travelmode=driving`;
+                    
+                    window.open(url, '_blank');
+                });
+            }
+        });
+    });
 }
 
 // Populate sidebar menu
@@ -127,19 +150,17 @@ function populateMenu() {
     });
 }
 
-// Update distances in sidebar (imperial)
+// Update distances in sidebar (miles)
 function updateDistances() {
     if (!userPosition) return;
     businesses.forEach(biz => {
         const bizLatLng = new google.maps.LatLng(parseFloat(biz.Lat), parseFloat(biz.Lng));
         const distanceMeters = google.maps.geometry.spherical.computeDistanceBetween(userPosition, bizLatLng);
-        const distanceMiles = (distanceMeters * 0.000621371).toFixed(2); // meters → miles
+        const distanceMiles = (distanceMeters * 0.000621371).toFixed(2);
         biz.distance = distanceMiles;
 
         const menuDiv = document.getElementById(`menu-${biz._rowIndex}`);
-        if (menuDiv) {
-            menuDiv.innerHTML = `${biz.Name} (${distanceMiles} mi)`;
-        }
+        if (menuDiv) menuDiv.innerHTML = `${biz.Name} (${distanceMiles} mi)`;
     });
 
     // Sort sidebar by distance
