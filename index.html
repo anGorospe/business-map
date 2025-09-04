@@ -2,47 +2,87 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Business Map</title>
+  <title>Business Map with Nearest Sidebar</title>
   <style>
-    #map { height: 100vh; width: 100%; }
-    .info-window { font-family: Arial, sans-serif; font-size: 14px; }
+    html, body { height: 100%; margin: 0; font-family: Arial, sans-serif; }
+    #map { height: 100%; width: 100%; margin-left: 260px; }
+    #sidebar {
+      position: absolute; top: 0; left: 0; width: 250px; height: 100vh;
+      overflow-y: auto; background: #fff; padding: 10px;
+      box-shadow: 2px 0 5px rgba(0,0,0,0.3); z-index: 5;
+    }
+    #sidebar h3 { margin-top: 0; }
+    #business-list li {
+      cursor: pointer; padding: 5px 0; border-bottom: 1px solid #eee;
+    }
+    #business-list li:hover { background: #f0f0f0; }
+    .info-window { font-size: 14px; }
     .info-window h3 { margin: 0; font-size: 16px; }
-    .info-window p { margin: 4px 0; }
   </style>
 </head>
 <body>
+  <div id="sidebar">
+    <h3>Nearest Businesses</h3>
+    <ul id="business-list"></ul>
+  </div>
   <div id="map"></div>
 
   <!-- Google Maps API -->
-  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAdMrHW4487TYOWq2Eyf0QH7Yzlwkc7d68&callback=initMap" async defer></script>
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAdMrHW4487TYOWq2Eyf0QH7Yzlwkc7d68&libraries=geometry&callback=initMap" async defer></script>
 
   <script>
-    // ======= Google Sheets API Settings =======
     const SHEET_ID = "1mQud7yhTLBBZDreCshvwUZxas3-bL45m_5O3c2SVO10";
-    const RANGE = "Sheet1!A:E"; // adjust your sheet tab name/range
+    const RANGE = "Sheet1!A:E";
     const API_KEY = "AIzaSyAdMrHW4487TYOWq2Eyf0QH7Yzlwkc7d68";
 
     let map;
+    let businesses = [];
+    let markers = [];
 
     async function initMap() {
-      // Create the map
       map = new google.maps.Map(document.getElementById("map"), {
         zoom: 14,
         center: { lat: 37.7749, lng: -122.4194 } // default center
       });
 
-      // Fetch sheet data
-      const businesses = await fetchSheetData();
+      businesses = await fetchSheetData();
+      addMarkers();
 
-      if (!businesses.length) return;
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(pos => {
+          const userPos = {
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude
+          };
+          map.setCenter(userPos);
+          buildNearestMenu(userPos);
+        }, () => {
+          console.warn("Geolocation denied or unavailable");
+        });
+      }
+    }
 
-      // Center map on first business
-      const first = businesses[0];
-      map.setCenter({ lat: parseFloat(first.Lat), lng: parseFloat(first.Lng) });
+    async function fetchSheetData() {
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${RANGE}?key=${API_KEY}`;
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+        const rows = data.values;
+        if (!rows || rows.length < 2) return [];
+        const headers = rows[0];
+        return rows.slice(1).map(row => {
+          const obj = {};
+          headers.forEach((h, i) => obj[h] = row[i] || "");
+          return obj;
+        });
+      } catch (err) {
+        console.error("Error fetching sheet:", err);
+        return [];
+      }
+    }
 
-      // Add markers
+    function addMarkers() {
       const infoWindow = new google.maps.InfoWindow();
-
       businesses.forEach(biz => {
         const lat = parseFloat(biz.Lat);
         const lng = parseFloat(biz.Lng);
@@ -62,32 +102,41 @@
           </div>
         `;
 
-        marker.addListener("click", () => infoWindow.setContent(content) || infoWindow.open(map, marker));
+        marker.addListener("click", () => {
+          infoWindow.setContent(content);
+          infoWindow.open(map, marker);
+        });
+
+        markers.push({ marker, biz });
       });
     }
 
-    async function fetchSheetData() {
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${RANGE}?key=${API_KEY}`;
-      try {
-        const response = await fetch(url);
-        if (!response.ok) {
-          console.error("Error fetching sheet:", response.status, response.statusText);
-          return [];
-        }
-        const data = await response.json();
-        const rows = data.values;
-        if (!rows || rows.length < 2) return [];
+    function getDistance(lat1, lng1, lat2, lng2) {
+      return google.maps.geometry.spherical.computeDistanceBetween(
+        new google.maps.LatLng(lat1, lng1),
+        new google.maps.LatLng(lat2, lng2)
+      );
+    }
 
-        const headers = rows[0];
-        return rows.slice(1).map(row => {
-          const obj = {};
-          headers.forEach((h, i) => obj[h] = row[i] || "");
-          return obj;
+    function buildNearestMenu(userPos) {
+      const sorted = businesses
+        .map(biz => ({
+          ...biz,
+          distance: getDistance(userPos.lat, userPos.lng, parseFloat(biz.Lat), parseFloat(biz.Lng))
+        }))
+        .sort((a, b) => a.distance - b.distance);
+
+      const ul = document.getElementById("business-list");
+      ul.innerHTML = "";
+      sorted.forEach(biz => {
+        const li = document.createElement("li");
+        li.textContent = `${biz.Name} (${(biz.distance/1000).toFixed(2)} km)`;
+        li.addEventListener("click", () => {
+          map.setCenter({ lat: parseFloat(biz.Lat), lng: parseFloat(biz.Lng) });
+          map.setZoom(16);
         });
-      } catch (err) {
-        console.error("Error fetching sheet:", err);
-        return [];
-      }
+        ul.appendChild(li);
+      });
     }
   </script>
 </body>
