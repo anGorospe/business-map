@@ -1,144 +1,162 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8">
-  <title>Business Map with Nearest Sidebar</title>
-  <style>
-    html, body { height: 100%; margin: 0; font-family: Arial, sans-serif; }
-    #map { height: 100%; width: 100%; margin-left: 260px; }
-    #sidebar {
-      position: absolute; top: 0; left: 0; width: 250px; height: 100vh;
-      overflow-y: auto; background: #fff; padding: 10px;
-      box-shadow: 2px 0 5px rgba(0,0,0,0.3); z-index: 5;
-    }
-    #sidebar h3 { margin-top: 0; }
-    #business-list li {
-      cursor: pointer; padding: 5px 0; border-bottom: 1px solid #eee;
-    }
-    #business-list li:hover { background: #f0f0f0; }
-    .info-window { font-size: 14px; }
-    .info-window h3 { margin: 0; font-size: 16px; }
-  </style>
+    <title>Business Map with Sidebar & Distance (Miles)</title>
+    <style>
+        html, body { margin: 0; padding: 0; height: 100%; }
+        #map { height: 100%; width: 100%; }
+        #menu {
+            position: absolute;
+            left: 10px;
+            top: 10px;
+            width: 250px;
+            max-height: 90vh;
+            overflow-y: auto;
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            font-family: Arial, sans-serif;
+            z-index: 10;
+        }
+        #menu h2 { margin-top: 0; font-size: 18px; }
+        .biz-item { cursor: pointer; margin-bottom: 5px; padding: 3px; border-radius: 3px; }
+        .biz-item:hover { background: #eee; }
+    </style>
 </head>
 <body>
-  <div id="sidebar">
-    <h3>Nearest Businesses</h3>
-    <ul id="business-list"></ul>
-  </div>
-  <div id="map"></div>
+<div id="menu">
+    <h2>Businesses</h2>
+    <div id="bizList"></div>
+</div>
+<div id="map"></div>
 
-  <!-- Google Maps API -->
-  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAdMrHW4487TYOWq2Eyf0QH7Yzlwkc7d68&libraries=geometry&callback=initMap" async defer></script>
+<script>
+const SHEET_ID = "1mQud7yhTLBBZDreCshvwUZxas3-bL45m_5O3c2SVO10";
+const RANGE = "Sheet1!A:H";
+const API_KEY = "AIzaSyAdMrHW4487TYOWq2Eyf0QH7Yzlwkc7d68";
 
-  <script>
-    const SHEET_ID = "1mQud7yhTLBBZDreCshvwUZxas3-bL45m_5O3c2SVO10";
-    const RANGE = "Sheet1!A:E";
-    const API_KEY = "AIzaSyAdMrHW4487TYOWq2Eyf0QH7Yzlwkc7d68";
+let map;
+let businesses = [];
+let userPosition = null;
 
-    let map;
-    let businesses = [];
-    let markers = [];
-
-    async function initMap() {
-      // Default center: Santa Monica
-      map = new google.maps.Map(document.getElementById("map"), {
-        center: { lat: 34.0195, lng: -118.4912 },
-        zoom: 14
-      });
-
-      businesses = await fetchSheetData();
-      addMarkers();
-
-      // Get user location for nearest business menu
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(pos => {
-          const userPos = {
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude
-          };
-          buildNearestMenu(userPos);
-        }, () => {
-          console.warn("Geolocation denied or unavailable");
-        });
-      }
-    }
-
-    async function fetchSheetData() {
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${RANGE}?key=${API_KEY}`;
-      try {
-        const res = await fetch(url);
+// Fetch businesses from Google Sheet
+async function fetchSheetData() {
+    try {
+        const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${RANGE}?key=${API_KEY}`);
         const data = await res.json();
-        const rows = data.values;
-        if (!rows || rows.length < 2) return [];
-        const headers = rows[0];
-        return rows.slice(1).map(row => {
-          const obj = {};
-          headers.forEach((h, i) => obj[h] = row[i] || "");
-          return obj;
+        if (!data.values || data.values.length < 2) return [];
+        const columns = data.values[0];
+        return data.values.slice(1).map((row, i) => {
+            const obj = { _rowIndex: i };
+            columns.forEach((col, j) => obj[col] = row[j] || "0");
+            return obj;
         });
-      } catch (err) {
-        console.error("Error fetching sheet:", err);
+    } catch (err) {
+        console.error("Failed to fetch sheet:", err);
         return [];
-      }
+    }
+}
+
+// Initialize map
+async function initMap() {
+    map = new google.maps.Map(document.getElementById("map"), {
+        center: { lat: 34.0195, lng: -118.4912 }, // Santa Monica
+        zoom: 13
+    });
+
+    // Get user location
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(pos => {
+            userPosition = new google.maps.LatLng(pos.coords.latitude, pos.coords.longitude);
+            new google.maps.Marker({
+                position: userPosition,
+                map: map,
+                title: "You are here",
+                icon: { path: google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: "blue", fillOpacity: 1, strokeColor: "white", strokeWeight: 2 }
+            });
+            updateDistances(); // update distances once we have user position
+        }, err => { console.warn("Geolocation error:", err); });
     }
 
-    function addMarkers() {
-      const infoWindow = new google.maps.InfoWindow();
-      businesses.forEach(biz => {
-        const lat = parseFloat(biz.Lat);
-        const lng = parseFloat(biz.Lng);
-        if (!lat || !lng) return;
+    businesses = await fetchSheetData();
+    if (businesses.length === 0) { console.warn("No businesses loaded"); return; }
 
-        const marker = new google.maps.Marker({
-          position: { lat, lng },
-          map: map,
-          title: biz.Name
+    businesses.forEach(addMarker);
+    populateMenu();
+    updateDistances();
+}
+
+// Add marker and info window
+function addMarker(biz) {
+    const lat = parseFloat(biz.Lat);
+    const lng = parseFloat(biz.Lng);
+    if (!lat || !lng) return;
+
+    const marker = new google.maps.Marker({
+        position: { lat, lng },
+        map: map,
+        title: biz.Name
+    });
+
+    const content = document.createElement('div');
+    content.innerHTML = `
+        <h3>${biz.Name}</h3>
+        <p>${biz.Description}</p>
+        <p>${biz.Hours}</p>
+    `;
+
+    const infoWindow = new google.maps.InfoWindow({ content });
+    marker.addListener('click', () => infoWindow.open(map, marker));
+}
+
+// Populate sidebar menu
+function populateMenu() {
+    const list = document.getElementById('bizList');
+    list.innerHTML = "";
+    businesses.forEach(biz => {
+        const div = document.createElement('div');
+        div.className = "biz-item";
+        div.id = `menu-${biz._rowIndex}`;
+        div.innerHTML = `${biz.Name}`;
+        div.addEventListener('click', () => {
+            map.setCenter({ lat: parseFloat(biz.Lat), lng: parseFloat(biz.Lng) });
+            map.setZoom(16);
         });
+        list.appendChild(div);
+    });
+}
 
-        const content = `
-          <div class="info-window">
-            <h3>${biz.Name}</h3>
-            <p><strong>Hours:</strong> ${biz.Hours}</p>
-            <p>${biz.Description}</p>
-          </div>
-        `;
+// Update distances in sidebar (imperial)
+function updateDistances() {
+    if (!userPosition) return;
+    businesses.forEach(biz => {
+        const bizLatLng = new google.maps.LatLng(parseFloat(biz.Lat), parseFloat(biz.Lng));
+        const distanceMeters = google.maps.geometry.spherical.computeDistanceBetween(userPosition, bizLatLng);
+        const distanceMiles = (distanceMeters * 0.000621371).toFixed(2); // meters → miles
+        biz.distance = distanceMiles;
 
-        marker.addListener("click", () => {
-          infoWindow.setContent(content);
-          infoWindow.open(map, marker);
-        });
+        const menuDiv = document.getElementById(`menu-${biz._rowIndex}`);
+        if (menuDiv) {
+            menuDiv.innerHTML = `${biz.Name} (${distanceMiles} mi)`;
+        }
+    });
 
-        markers.push({ marker, biz });
-      });
-    }
+    // Sort sidebar by distance
+    const menuList = document.getElementById('bizList');
+    const items = Array.from(menuList.children);
+    items.sort((a,b) => {
+        const aIndex = parseInt(a.id.replace("menu-",""));
+        const bIndex = parseInt(b.id.replace("menu-",""));
+        return businesses[aIndex].distance - businesses[bIndex].distance;
+    });
+    items.forEach(item => menuList.appendChild(item));
+}
+</script>
 
-    function getDistance(lat1, lng1, lat2, lng2) {
-      return google.maps.geometry.spherical.computeDistanceBetween(
-        new google.maps.LatLng(lat1, lng1),
-        new google.maps.LatLng(lat2, lng2)
-      );
-    }
-
-    function buildNearestMenu(userPos) {
-      const sorted = businesses
-        .map(biz => ({
-          ...biz,
-          distance: getDistance(userPos.lat, userPos.lng, parseFloat(biz.Lat), parseFloat(biz.Lng))
-        }))
-        .sort((a, b) => a.distance - b.distance);
-
-      const ul = document.getElementById("business-list");
-      ul.innerHTML = "";
-      sorted.forEach(biz => {
-        const li = document.createElement("li");
-        li.textContent = `${biz.Name} (${(biz.distance/1000).toFixed(2)} km)`;
-        li.addEventListener("click", () => {
-          map.setCenter({ lat: parseFloat(biz.Lat), lng: parseFloat(biz.Lng) });
-          map.setZoom(16);
-        });
-        ul.appendChild(li);
-      });
-    }
-  </script>
+<!-- Google Maps API with geometry library -->
+<script async defer
+    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAdMrHW4487TYOWq2Eyf0QH7Yzlwkc7d68&libraries=geometry&callback=initMap">
+</script>
 </body>
 </html>
