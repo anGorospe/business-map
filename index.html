@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Business Map</title>
+  <style>
+    #map { height: 100vh; width: 100%; }
+    .info-window { font-family: Arial, sans-serif; font-size: 14px; }
+    .info-window h3 { margin: 0; font-size: 16px; }
+    .info-window p { margin: 4px 0; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <!-- Google Maps API -->
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAdMrHW4487TYOWq2Eyf0QH7Yzlwkc7d68&callback=initMap" async defer></script>
+
+  <script>
+    const sheetUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS1z-HCCdmir7r4SJmM4gueN1fWMqq2Fu8Q98l7w47u0eibjZTJiaVMhvdkoo7SX11Bd1y3cU635WIf/pub?output=csv";
+
+    function parseCSV(csvText) {
+      const lines = csvText.trim().split("\n");
+      const headers = lines[0].split(",");
+      const rows = lines.slice(1);
+      return rows
+        .filter(line => line.trim() !== "") // skip blank lines
+        .map(line => {
+          const cols = line.split(",");
+          return {
+            name: cols[0] || "Unnamed",
+            lat: parseFloat(cols[1]) || 0,
+            lng: parseFloat(cols[2]) || 0,
+            hours: cols[3] || "N/A",
+            description: cols[4] || ""
+          };
+        });
+    }
+
+    function initMap() {
+      const map = new google.maps.Map(document.getElementById("map"), {
+        zoom: 14,
+        center: { lat: 37.7749, lng: -122.4194 } // temporary center
+      });
+
+      fetch(sheetUrl)
+        .then(res => res.text())
+        .then(text => {
+          const businesses = parseCSV(text);
+          if (!businesses.length) return;
+
+          // Center map on first business
+          map.setCenter({ lat: businesses[0].lat, lng: businesses[0].lng });
+
+          const infoWindow = new google.maps.InfoWindow();
+
+          businesses.forEach(biz => {
+            if (biz.lat === 0 && biz.lng === 0) return; // skip invalid coords
+            const marker = new google.maps.Marker({
+              position: { lat: biz.lat, lng: biz.lng },
+              map: map,
+              title: biz.name
+            });
+
+            const content = `
+              <div class="info-window">
+                <h3>${biz.name}</h3>
+                <p><strong>Hours:</strong> ${biz.hours}</p>
+                <p>${biz.description}</p>
+              </div>
+            `;
+
+            marker.addListener("click", () => {
+              infoWindow.setContent(content);
+              infoWindow.open(map, marker);
+            });
+          });
+        })
+        .catch(err => console.error("Error loading sheet:", err));
+    }
+  </script>
+</body>
+</html>
