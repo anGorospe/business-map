@@ -108,13 +108,35 @@
 
         function isOpen(hoursStr) {
             if (!hoursStr) return true;
+            if (hoursStr.toLowerCase() === "24 hours") return true;
+
             const now = new Date();
-            const [openStr, closeStr] = hoursStr.split("-");
-            if (!openStr || !closeStr) return true;
-            const [openH, openM] = openStr.split(":").map(Number);
-            const [closeH, closeM] = closeStr.split(":").map(Number);
-            const openDate = new Date(now); openDate.setHours(openH, openM, 0, 0);
-            const closeDate = new Date(now); closeDate.setHours(closeH, closeM, 0, 0);
+
+            const parts = hoursStr.split("-");
+            if (parts.length !== 2) return true;
+
+            const parseTime = (str) => {
+                let [time, modifier] = str.trim().split(" ");
+                let [hours, minutes] = time.split(":").map(Number);
+                if (modifier) {
+                    if (modifier.toLowerCase() === "pm" && hours < 12) hours += 12;
+                    if (modifier.toLowerCase() === "am" && hours === 12) hours = 0;
+                }
+                return { hours, minutes };
+            };
+
+            const openT = parseTime(parts[0]);
+            const closeT = parseTime(parts[1]);
+
+            const openDate = new Date(now);
+            openDate.setHours(openT.hours, openT.minutes, 0, 0);
+
+            const closeDate = new Date(now);
+            closeDate.setHours(closeT.hours, closeT.minutes, 0, 0);
+
+            // Handle overnight closing
+            if (closeDate <= openDate) closeDate.setDate(closeDate.getDate() + 1);
+
             return now >= openDate && now <= closeDate;
         }
 
