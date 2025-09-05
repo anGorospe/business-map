@@ -229,4 +229,45 @@
                     map,
                     title: biz.Name,
                     icon: open 
-                        ? "http://maps.google.com/mapfiles/ms/
+                        ? "http://maps.google.com/mapfiles/ms/icons/red-dot.png"
+                        : "http://maps.google.com/mapfiles/ms/icons/grey-dot.png"
+                });
+
+                const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${biz.Lat},${biz.Lng}&travelmode=driving`;
+                const info = new google.maps.InfoWindow({
+                    content: `
+                        <div style="font-family: Arial, sans-serif; font-size: 14px; max-width: 250px;">
+                            <b>${biz.Name}</b><br>
+                            ${biz.Description ? biz.Description + "<br>" : ""}
+                            ${biz.Hours ? biz.Hours + "<br>" : ""}
+                            ${open 
+                                ? `<span style="color: green; font-weight: bold;">Open</span>` 
+                                : `<span style="color: red; font-weight: bold;">Closed</span>`
+                            }
+                            <br><br>
+                            <a href="${directionsUrl}" target="_blank" style="
+                                display: inline-block;
+                                padding: 6px 10px;
+                                margin-top: 5px;
+                                background-color: #4285F4;
+                                color: white;
+                                text-decoration: none;
+                                border-radius: 4px;
+                                font-size: 13px;
+                            ">Get Directions</a>
+                        </div>
+                    `
+                });
+
+                marker.addListener("click", () => {
+                    if (openInfoWindow) openInfoWindow.close();
+                    info.open(map, marker);
+                    openInfoWindow = info;
+                });
+
+                bizMarkers.push(marker);
+            });
+        }
+    </script>
+</body>
+</html>
