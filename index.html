@@ -58,8 +58,8 @@
         let map;
         let businesses = [];
         let bizMarkers = [];
+        let openInfoWindow = null; // track currently open InfoWindow
 
-        // Replace with your published Google Sheets CSV URL
         const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQDzM3Nu-ROuwXQqfAamzS8iG2qTOEYTR8-uh2X0XeWUtlcAJ-G9bkqACZWgZTFJW3zlwKOfxeNYzoi/pub?output=csv';
 
         function initMap() {
@@ -107,7 +107,6 @@
             if (hoursStr.toLowerCase() === "24 hours") return true;
 
             const now = new Date();
-
             const parts = hoursStr.split("-");
             if (parts.length !== 2) return true;
 
@@ -146,7 +145,7 @@
                     biz.distance = ((google.maps.geometry.spherical.computeDistanceBetween(
                         new google.maps.LatLng(userLat, userLng),
                         new google.maps.LatLng(lat, lng)
-                    )) / 1609.34).toFixed(2);
+                    )) / 1609.34).toFixed(2); // miles
                 });
                 renderBusinessList();
             });
@@ -205,7 +204,8 @@
                     if (marker) {
                         map.setCenter(marker.getPosition());
                         map.setZoom(15);
-                        google.maps.event.trigger(marker, "click"); // open marker's info window
+                        if (openInfoWindow) openInfoWindow.close();
+                        google.maps.event.trigger(marker, "click");
                     }
                 });
 
@@ -229,43 +229,4 @@
                     map,
                     title: biz.Name,
                     icon: open 
-                        ? "http://maps.google.com/mapfiles/ms/icons/red-dot.png"
-                        : "http://maps.google.com/mapfiles/ms/icons/grey-dot.png"
-                });
-
-                const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${biz.Lat},${biz.Lng}&travelmode=driving`;
-                const info = new google.maps.InfoWindow({
-                    content: `
-                        <div style="font-family: Arial, sans-serif; font-size: 14px; max-width: 250px;">
-                            <b>${biz.Name}</b><br>
-                            ${biz.Description ? biz.Description + "<br>" : ""}
-                            ${biz.Hours ? biz.Hours + "<br>" : ""}
-                            ${open 
-                                ? `<span style="color: green; font-weight: bold;">Open</span>` 
-                                : `<span style="color: red; font-weight: bold;">Closed</span>`
-                            }
-                            <br><br>
-                            <a href="${directionsUrl}" target="_blank" style="
-                                display: inline-block;
-                                padding: 6px 10px;
-                                margin-top: 5px;
-                                background-color: #4285F4;
-                                color: white;
-                                text-decoration: none;
-                                border-radius: 4px;
-                                font-size: 13px;
-                            ">Get Directions</a>
-                        </div>
-                    `
-                });
-
-                marker.addListener("click", () => {
-                    info.open(map, marker);
-                });
-
-                bizMarkers.push(marker);
-            });
-        }
-    </script>
-</body>
-</html>
+                        ? "http://maps.google.com/mapfiles/ms/
