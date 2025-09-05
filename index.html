@@ -54,19 +54,19 @@
     <div id="map"></div>
     <div id="footer">Created by Angelo Gorospe</div>
 
-    <!-- Google Maps API -->
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAdMrHW4487TYOWq2Eyf0QH7Yzlwkc7d68&callback=initMap" async defer></script>
+    <!-- Google Maps API (single load with geometry library) -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAdMrHW4487TYOWq2Eyf0QH7Yzlwkc7d68&callback=initMap&libraries=geometry" async defer></script>
 
     <script>
         let map;
         let businesses = [];
         let bizMarkers = [];
 
-        // Replace with your published Google Sheets CSV URL
-        const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/YOUR_SHEET_ID/pub?output=csv';
+        // Replace this with your published Google Sheets CSV URL
+        const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQDzM3Nu-ROuwXQqfAamzS8iG2qTOEYTR8-uh2X0XeWUtlcAJ-G9bkqACZWgZTFJW3zlwKOfxeNYzoi/pub?output=csv';
 
         function initMap() {
-            // Default: Santa Monica geofence center
+            // Default: Santa Monica center
             map = new google.maps.Map(document.getElementById('map'), {
                 center: { lat: 34.0195, lng: -118.4912 },
                 zoom: 13
@@ -76,6 +76,7 @@
 
             document.getElementById("showClosedToggle").addEventListener("change", () => {
                 renderMarkers();
+                renderBusinessList();
             });
         }
 
@@ -87,10 +88,10 @@
                     updateDistances();
                     renderBusinessList();
                     renderMarkers();
-                });
+                })
+                .catch(err => console.error("Error fetching sheet:", err));
         }
 
-        // Simple CSV parser
         function parseCSV(csv) {
             const lines = csv.trim().split("\n");
             const headers = lines.shift().split(",");
@@ -107,16 +108,13 @@
 
         function isOpen(hoursStr) {
             if (!hoursStr) return true;
-            // Simple check: "9:00-17:00" format
             const now = new Date();
             const [openStr, closeStr] = hoursStr.split("-");
             if (!openStr || !closeStr) return true;
             const [openH, openM] = openStr.split(":").map(Number);
             const [closeH, closeM] = closeStr.split(":").map(Number);
-            const openDate = new Date(now);
-            openDate.setHours(openH, openM, 0, 0);
-            const closeDate = new Date(now);
-            closeDate.setHours(closeH, closeM, 0, 0);
+            const openDate = new Date(now); openDate.setHours(openH, openM, 0, 0);
+            const closeDate = new Date(now); closeDate.setHours(closeH, closeM, 0, 0);
             return now >= openDate && now <= closeDate;
         }
 
@@ -131,7 +129,7 @@
                     biz.distance = ((google.maps.geometry.spherical.computeDistanceBetween(
                         new google.maps.LatLng(userLat, userLng),
                         new google.maps.LatLng(lat, lng)
-                    )) / 1609.34).toFixed(2); // meters to miles
+                    )) / 1609.34).toFixed(2); // miles
                 });
                 renderBusinessList();
             });
@@ -152,7 +150,6 @@
             });
 
             const toShow = showClosed ? [...openBusinesses, ...closedBusinesses] : openBusinesses;
-
             toShow.sort((a,b) => (a.distance || 0) - (b.distance || 0));
 
             toShow.forEach(biz => {
@@ -249,8 +246,5 @@
             });
         }
     </script>
-
-    <!-- Geometry library for distance calculation -->
-    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAdMrHW4487TYOWq2Eyf0QH7Yzlwkc7d68&libraries=geometry"></script>
 </body>
 </html>
