@@ -25,9 +25,6 @@
         .business-item {
             margin-bottom: 10px;
         }
-        .closed {
-            color: gray;
-        }
         #toggleWrapper {
             margin-top: 10px;
             font-size: 14px;
@@ -54,7 +51,7 @@
     <div id="map"></div>
     <div id="footer">Created by Angelo Gorospe</div>
 
-    <!-- Google Maps API (single load with geometry library) -->
+    <!-- Google Maps API -->
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAdMrHW4487TYOWq2Eyf0QH7Yzlwkc7d68&callback=initMap&libraries=geometry" async defer></script>
 
     <script>
@@ -62,13 +59,12 @@
         let businesses = [];
         let bizMarkers = [];
 
-        // Replace this with your published Google Sheets CSV URL
+        // Replace with your published Google Sheets CSV URL
         const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQDzM3Nu-ROuwXQqfAamzS8iG2qTOEYTR8-uh2X0XeWUtlcAJ-G9bkqACZWgZTFJW3zlwKOfxeNYzoi/pub?output=csv';
 
         function initMap() {
-            // Default: Santa Monica center
             map = new google.maps.Map(document.getElementById('map'), {
-                center: { lat: 34.0195, lng: -118.4912 },
+                center: { lat: 34.0195, lng: -118.4912 }, // Santa Monica
                 zoom: 13
             });
 
@@ -134,7 +130,6 @@
             const closeDate = new Date(now);
             closeDate.setHours(closeT.hours, closeT.minutes, 0, 0);
 
-            // Handle overnight closing
             if (closeDate <= openDate) closeDate.setDate(closeDate.getDate() + 1);
 
             return now >= openDate && now <= closeDate;
@@ -151,7 +146,7 @@
                     biz.distance = ((google.maps.geometry.spherical.computeDistanceBetween(
                         new google.maps.LatLng(userLat, userLng),
                         new google.maps.LatLng(lat, lng)
-                    )) / 1609.34).toFixed(2); // miles
+                    )) / 1609.34).toFixed(2);
                 });
                 renderBusinessList();
             });
@@ -206,8 +201,12 @@
                 `;
 
                 item.addEventListener("click", () => {
-                    map.setCenter({ lat: parseFloat(biz.Lat), lng: parseFloat(biz.Lng) });
-                    map.setZoom(15);
+                    const marker = bizMarkers.find(m => m.getPosition().lat() === parseFloat(biz.Lat) && m.getPosition().lng() === parseFloat(biz.Lng));
+                    if (marker) {
+                        map.setCenter(marker.getPosition());
+                        map.setZoom(15);
+                        google.maps.event.trigger(marker, "click"); // open marker's info window
+                    }
                 });
 
                 list.appendChild(item);
