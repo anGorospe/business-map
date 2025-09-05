@@ -3,195 +3,254 @@
 <head>
     <title>EBB Helper</title>
     <style>
-        html, body { margin: 0; padding: 0; height: 100%; }
-        #map { height: 100%; width: 100%; }
-        #menu {
-            position: absolute;
-            left: 10px;
-            top: 10px;
-            width: 250px;
-            max-height: 90vh;
-            overflow-y: auto;
-            background: white;
-            padding: 10px;
-            border-radius: 5px;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        html, body {
+            height: 100%;
+            margin: 0;
             font-family: Arial, sans-serif;
-            z-index: 10;
         }
-        #menu h2 { margin-top: 0; font-size: 18px; }
-        .biz-item { cursor: pointer; margin-bottom: 5px; padding: 3px; border-radius: 3px; }
-        .biz-item:hover { background: #eee; }
-        button { cursor: pointer; margin-top: 5px; }
-
-        /* Footer */
+        #map {
+            height: 100%;
+            width: 75%;
+            float: right;
+        }
+        #sidebar {
+            width: 25%;
+            height: 100%;
+            float: left;
+            overflow-y: auto;
+            padding: 10px;
+            box-sizing: border-box;
+            background-color: #f8f8f8;
+        }
+        .business-item {
+            margin-bottom: 10px;
+        }
+        .closed {
+            color: gray;
+        }
+        #toggleWrapper {
+            margin-top: 10px;
+            font-size: 14px;
+        }
         #footer {
             position: absolute;
             bottom: 5px;
             right: 10px;
-            font-family: Arial, sans-serif;
             font-size: 12px;
-            background: red;
-            color: white;
-            padding: 3px 6px;
-            border-radius: 4px;
-            z-index: 10;
+            color: #555;
         }
     </style>
 </head>
 <body>
-<div id="menu">
-    <h2>Businesses</h2>
-    <div id="bizList"></div>
-</div>
-<div id="map"></div>
-<div id="footer">Created by Angelo Gorospe</div>
+    <div id="sidebar">
+        <h2>Businesses</h2>
+        <div id="businessList"></div>
+        <div id="toggleWrapper">
+            <label>
+                <input type="checkbox" id="showClosedToggle"> Show closed businesses on map
+            </label>
+        </div>
+    </div>
+    <div id="map"></div>
+    <div id="footer">Created by Angelo Gorospe</div>
 
-<script>
-const SHEET_ID = "1mQud7yhTLBBZDreCshvwUZxas3-bL45m_5O3c2SVO10";
-const RANGE = "Sheet1!A:H";
-const API_KEY = "AIzaSyAdMrHW4487TYOWq2Eyf0QH7Yzlwkc7d68";
+    <!-- Google Maps API -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAdMrHW4487TYOWq2Eyf0QH7Yzlwkc7d68&callback=initMap" async defer></script>
 
-let map;
-let businesses = [];
-let userPosition = null;
+    <script>
+        let map;
+        let businesses = [];
+        let bizMarkers = [];
 
-// Fetch businesses from Google Sheet
-async function fetchSheetData() {
-    try {
-        const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${RANGE}?key=${API_KEY}`);
-        const data = await res.json();
-        if (!data.values || data.values.length < 2) return [];
-        const columns = data.values[0];
-        return data.values.slice(1).map((row, i) => {
-            const obj = { _rowIndex: i };
-            columns.forEach((col, j) => obj[col] = row[j] || "0");
-            return obj;
-        });
-    } catch (err) {
-        console.error("Failed to fetch sheet:", err);
-        return [];
-    }
-}
+        // Replace with your published Google Sheets CSV URL
+        const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/YOUR_SHEET_ID/pub?output=csv';
 
-// Initialize map
-async function initMap() {
-    map = new google.maps.Map(document.getElementById("map"), {
-        center: { lat: 34.0195, lng: -118.4912 }, // Santa Monica
-        zoom: 13
-    });
-
-    businesses = await fetchSheetData();
-    if (businesses.length === 0) { console.warn("No businesses loaded"); return; }
-
-    businesses.forEach(addMarker);
-
-    // Attempt to get user location
-    if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(pos => {
-            userPosition = new google.maps.LatLng(pos.coords.latitude, pos.coords.longitude);
-            new google.maps.Marker({
-                position: userPosition,
-                map: map,
-                title: "You are here",
-                icon: { path: google.maps.SymbolPath.CIRCLE, scale: 8, fillColor: "blue", fillOpacity: 1, strokeColor: "white", strokeWeight: 2 }
+        function initMap() {
+            // Default: Santa Monica geofence center
+            map = new google.maps.Map(document.getElementById('map'), {
+                center: { lat: 34.0195, lng: -118.4912 },
+                zoom: 13
             });
-            updateDistances();
-        }, err => {
-            console.warn("Geolocation error:", err);
-            populateMenu(); // Fallback if location denied
-        });
-    } else {
-        populateMenu(); // Browser doesn't support geolocation
-    }
-}
 
-// Add marker and info window with Get Directions button
-function addMarker(biz) {
-    const lat = parseFloat(biz.Lat);
-    const lng = parseFloat(biz.Lng);
-    if (!lat || !lng) return;
+            fetchBusinesses();
 
-    const marker = new google.maps.Marker({
-        position: { lat, lng },
-        map: map,
-        title: biz.Name
-    });
+            document.getElementById("showClosedToggle").addEventListener("change", () => {
+                renderMarkers();
+            });
+        }
 
-    const content = document.createElement('div');
-    content.innerHTML = `
-        <h3>${biz.Name}</h3>
-        <p>${biz.Description}</p>
-        <p>${biz.Hours}</p>
-        <button id="directions-${biz._rowIndex}">Get Directions</button>
-    `;
-
-    const infoWindow = new google.maps.InfoWindow({ content });
-    marker.addListener('click', () => {
-        infoWindow.open(map, marker);
-
-        google.maps.event.addListenerOnce(infoWindow, 'domready', () => {
-            const btn = document.getElementById(`directions-${biz._rowIndex}`);
-            if (btn) {
-                btn.addEventListener('click', () => {
-                    if (!userPosition) {
-                        alert("User location not available");
-                        return;
-                    }
-
-                    const start = `${userPosition.lat()},${userPosition.lng()}`;
-                    const dest = `${biz.Lat},${biz.Lng}`;
-                    const url = `https://www.google.com/maps/dir/?api=1&origin=${start}&destination=${dest}&travelmode=driving`;
-                    
-                    window.open(url, '_blank');
+        function fetchBusinesses() {
+            fetch(SHEET_CSV_URL)
+                .then(res => res.text())
+                .then(csvText => {
+                    businesses = parseCSV(csvText);
+                    updateDistances();
+                    renderBusinessList();
+                    renderMarkers();
                 });
+        }
+
+        // Simple CSV parser
+        function parseCSV(csv) {
+            const lines = csv.trim().split("\n");
+            const headers = lines.shift().split(",");
+            return lines.map((line, idx) => {
+                const data = line.split(",");
+                const obj = {};
+                headers.forEach((h, i) => {
+                    obj[h.trim()] = data[i] ? data[i].trim() : "";
+                });
+                obj._rowIndex = idx;
+                return obj;
+            });
+        }
+
+        function isOpen(hoursStr) {
+            if (!hoursStr) return true;
+            // Simple check: "9:00-17:00" format
+            const now = new Date();
+            const [openStr, closeStr] = hoursStr.split("-");
+            if (!openStr || !closeStr) return true;
+            const [openH, openM] = openStr.split(":").map(Number);
+            const [closeH, closeM] = closeStr.split(":").map(Number);
+            const openDate = new Date(now);
+            openDate.setHours(openH, openM, 0, 0);
+            const closeDate = new Date(now);
+            closeDate.setHours(closeH, closeM, 0, 0);
+            return now >= openDate && now <= closeDate;
+        }
+
+        function updateDistances() {
+            if (!navigator.geolocation) return;
+            navigator.geolocation.getCurrentPosition(pos => {
+                const userLat = pos.coords.latitude;
+                const userLng = pos.coords.longitude;
+                businesses.forEach(biz => {
+                    const lat = parseFloat(biz.Lat);
+                    const lng = parseFloat(biz.Lng);
+                    biz.distance = ((google.maps.geometry.spherical.computeDistanceBetween(
+                        new google.maps.LatLng(userLat, userLng),
+                        new google.maps.LatLng(lat, lng)
+                    )) / 1609.34).toFixed(2); // meters to miles
+                });
+                renderBusinessList();
+            });
+        }
+
+        function renderBusinessList() {
+            const list = document.getElementById("businessList");
+            list.innerHTML = "";
+
+            const showClosed = document.getElementById("showClosedToggle")?.checked;
+            const openBusinesses = [];
+            const closedBusinesses = [];
+
+            businesses.forEach(biz => {
+                const open = isOpen(biz.Hours);
+                if (open) openBusinesses.push(biz);
+                else closedBusinesses.push(biz);
+            });
+
+            const toShow = showClosed ? [...openBusinesses, ...closedBusinesses] : openBusinesses;
+
+            toShow.sort((a,b) => (a.distance || 0) - (b.distance || 0));
+
+            toShow.forEach(biz => {
+                const open = isOpen(biz.Hours);
+                const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${biz.Lat},${biz.Lng}&travelmode=driving`;
+
+                const item = document.createElement("div");
+                item.className = "business-item";
+                item.style.padding = "8px";
+                item.style.borderBottom = "1px solid #ddd";
+                item.style.cursor = "pointer";
+                item.style.backgroundColor = open ? "white" : "#f0f0f0";
+
+                item.innerHTML = `
+                    <div style="font-weight: bold;">${biz.Name}</div>
+                    <div style="font-size: 13px; color: #555;">${biz.Description || ""}</div>
+                    <div style="font-size: 12px; margin-top: 2px;">${biz.Hours || ""}</div>
+                    <div style="margin-top: 4px; ${open ? "color: green;" : "color: red;"} font-weight: bold;">
+                        ${open ? "Open" : "Closed"}
+                    </div>
+                    ${biz.distance ? `<div style="font-size:12px; margin-top:2px;">${biz.distance} mi</div>` : ""}
+                    <a href="${directionsUrl}" target="_blank" style="
+                        display: inline-block;
+                        padding: 4px 8px;
+                        margin-top: 6px;
+                        background-color: #4285F4;
+                        color: white;
+                        text-decoration: none;
+                        border-radius: 4px;
+                        font-size: 12px;
+                    ">Get Directions</a>
+                `;
+
+                item.addEventListener("click", () => {
+                    map.setCenter({ lat: parseFloat(biz.Lat), lng: parseFloat(biz.Lng) });
+                    map.setZoom(15);
+                });
+
+                list.appendChild(item);
+            });
+        }
+
+        function renderMarkers() {
+            if (bizMarkers.length) {
+                bizMarkers.forEach(m => m.setMap(null));
             }
-        });
-    });
-}
+            bizMarkers = [];
 
-// Populate sidebar menu
-function populateMenu() {
-    const list = document.getElementById('bizList');
-    list.innerHTML = "";
-    businesses.forEach(biz => {
-        const div = document.createElement('div');
-        div.className = "biz-item";
-        div.id = `menu-${biz._rowIndex}`;
-        const distText = biz.distance !== undefined ? ` (${biz.distance} mi)` : "";
-        div.innerHTML = `${biz.Name}${distText}`;
-        div.addEventListener('click', () => {
-            map.setCenter({ lat: parseFloat(biz.Lat), lng: parseFloat(biz.Lng) });
-            map.setZoom(16);
-        });
-        list.appendChild(div);
-    });
-}
+            const showClosed = document.getElementById("showClosedToggle")?.checked;
+            const toShow = showClosed ? businesses : businesses.filter(biz => isOpen(biz.Hours));
 
-// Update distances in sidebar (miles) and sort closest → farthest
-function updateDistances() {
-    if (!userPosition) {
-        populateMenu(); // fallback if no location
-        return;
-    }
+            toShow.forEach(biz => {
+                const open = isOpen(biz.Hours);
+                const marker = new google.maps.Marker({
+                    position: { lat: parseFloat(biz.Lat), lng: parseFloat(biz.Lng) },
+                    map,
+                    title: biz.Name,
+                    icon: open 
+                        ? "http://maps.google.com/mapfiles/ms/icons/red-dot.png"
+                        : "http://maps.google.com/mapfiles/ms/icons/grey-dot.png"
+                });
 
-    businesses.forEach(biz => {
-        const bizLatLng = new google.maps.LatLng(parseFloat(biz.Lat), parseFloat(biz.Lng));
-        const distanceMeters = google.maps.geometry.spherical.computeDistanceBetween(userPosition, bizLatLng);
-        biz.distance = parseFloat((distanceMeters * 0.000621371).toFixed(2)); // miles
-    });
+                const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${biz.Lat},${biz.Lng}&travelmode=driving`;
+                const info = new google.maps.InfoWindow({
+                    content: `
+                        <div style="font-family: Arial, sans-serif; font-size: 14px; max-width: 250px;">
+                            <b>${biz.Name}</b><br>
+                            ${biz.Description ? biz.Description + "<br>" : ""}
+                            ${biz.Hours ? biz.Hours + "<br>" : ""}
+                            ${open 
+                                ? `<span style="color: green; font-weight: bold;">Open</span>` 
+                                : `<span style="color: red; font-weight: bold;">Closed</span>`
+                            }
+                            <br><br>
+                            <a href="${directionsUrl}" target="_blank" style="
+                                display: inline-block;
+                                padding: 6px 10px;
+                                margin-top: 5px;
+                                background-color: #4285F4;
+                                color: white;
+                                text-decoration: none;
+                                border-radius: 4px;
+                                font-size: 13px;
+                            ">Get Directions</a>
+                        </div>
+                    `
+                });
 
-    // Sort businesses by distance
-    businesses.sort((a, b) => a.distance - b.distance);
+                marker.addListener("click", () => {
+                    info.open(map, marker);
+                });
 
-    // Update sidebar
-    populateMenu();
-}
-</script>
+                bizMarkers.push(marker);
+            });
+        }
+    </script>
 
-<!-- Google Maps API with geometry library -->
-<script async defer
-    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAdMrHW4487TYOWq2Eyf0QH7Yzlwkc7d68&libraries=geometry&callback=initMap">
-</script>
+    <!-- Geometry library for distance calculation -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAdMrHW4487TYOWq2Eyf0QH7Yzlwkc7d68&libraries=geometry"></script>
 </body>
 </html>
